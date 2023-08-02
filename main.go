@@ -4,8 +4,11 @@ import (
 	"encoding/json"
 	"flag"
 	"fmt"
+	"io"
 	"log"
 	"math"
+	"net/http"
+	"net/url"
 	"os"
 	"path/filepath"
 	"runtime"
@@ -21,6 +24,7 @@ var (
 	token         = flag.String("token", "", "bot token")
 	targetGuildID = flag.String("guild", "", "guildID")
 	saved         = 0
+	saveDir       string
 	startTime     time.Time
 	elapsedTime   time.Time
 )
@@ -50,9 +54,8 @@ func onReady(discord *discordgo.Session, r *discordgo.Ready) {
 
 	// Create Save Dir
 	_, file, _, _ := runtime.Caller(0)
-	os.Chdir(filepath.Join(filepath.Dir(file)))
-
-	saveDir := filepath.Join("download", *targetGuildID)
+	saveDir = filepath.Join(filepath.Dir(file), "download", *targetGuildID)
+	log.Println("[Info] Save Directory Is", saveDir)
 	os.MkdirAll(saveDir, 0766)
 	err := os.Chdir(saveDir)
 	if err != nil {
@@ -106,6 +109,35 @@ func onReady(discord *discordgo.Session, r *discordgo.Ready) {
 				break
 			}
 
+			for _, m := range messages {
+				for _, attachment := range m.Attachments {
+					res, err := http.Get(attachment.URL)
+					if err != nil {
+						log.Printf("[Error] Failed Get Attachment File %s=>%s, Error:%s", m.ID, attachment.Filename, err.Error())
+						continue
+					}
+					defer res.Body.Close()
+
+					u, _ := url.Parse(attachment.URL)
+					err = os.MkdirAll(filepath.Join(saveDir, filepath.Dir(u.Path)), 0766)
+					if err != nil {
+						log.Printf("[Error] Failed Create Attachment Directory %s=>%s, Error:%s", m.ID, attachment.Filename, err.Error())
+						continue
+					}
+					f, err := os.Create(filepath.Join(saveDir, u.Path))
+					if err != nil {
+						log.Printf("[Error] Failed Create Attachment File %s=>%s, Error:%s", m.ID, attachment.Filename, err.Error())
+						continue
+					}
+					defer f.Close()
+
+					_, err = io.Copy(f, res.Body)
+					if err != nil {
+						log.Printf("[Error] Failed Write Attachment File %s=>%s, Error:%s", m.ID, attachment.Filename, err.Error())
+						continue
+					}
+				}
+			}
 			last := messages[len(messages)-1]
 			if beforeMessageTimestamp.IsZero() {
 				beforeMessageTimestamp = last.Timestamp
