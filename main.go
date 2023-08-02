@@ -21,9 +21,9 @@ import (
 
 var (
 	//変数定義
-	token         = flag.String("token", "", "bot token")
-	targetGuildID = flag.String("guild", "", "guildID")
-	saved         = 0
+	token               = flag.String("token", "", "bot token")
+	targetGuildID       = flag.String("guild", "", "guildID")
+	saved         int64 = 0
 	saveDir       string
 	startTime     time.Time
 	elapsedTime   time.Time
@@ -131,11 +131,12 @@ func onReady(discord *discordgo.Session, r *discordgo.Ready) {
 					}
 					defer f.Close()
 
-					_, err = io.Copy(f, res.Body)
+					n, err := io.Copy(f, res.Body)
 					if err != nil {
 						log.Printf("[Error] Failed Write Attachment File %s=>%s, Error:%s", m.ID, attachment.Filename, err.Error())
 						continue
 					}
+					saved += n
 				}
 			}
 			last := messages[len(messages)-1]
@@ -177,7 +178,7 @@ func SaveJsonFile(name string, data interface{}) error {
 		fmt.Println("[ERROR]:", err)
 		return err
 	}
-	saved += len(body)
+	saved += int64(len(body))
 	return nil
 }
 
@@ -186,7 +187,7 @@ func LogData() string {
 	return fmt.Sprintf("Bytes:%s, Elapsed:%s, Total:%s\n", ByteSize(saved), now.Sub(elapsedTime), now.Sub(startTime))
 }
 
-func ByteSize(b int) string {
+func ByteSize(b int64) string {
 	bf := float64(b)
 	for _, unit := range []string{"", "Ki", "Mi", "Gi", "Ti", "Pi", "Ei", "Zi"} {
 		if math.Abs(bf) < 1024.0 {
