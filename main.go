@@ -149,7 +149,7 @@ func onReady(discord *discordgo.Session, r *discordgo.Ready) {
 			beforeMessageID = last.ID
 			messageData = append(messageData, messages...)
 			if len(messageData)%2000 == 0 {
-				log.Printf("[Info] Loaded Messages %d ~%s %s\n", len(messageData), last.Timestamp.Format(time.RFC3339), LogData())
+				log.Printf("[Info] Loaded Messages %d ~%s %s", len(messageData), last.Timestamp.Format(time.RFC3339), LogData())
 			}
 		}
 		log.Printf("[Info] Save Channel Messages Count:%d\n", len(messageData))
