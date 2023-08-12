@@ -1,0 +1,9 @@
+{
+  "token": "",
+  "isDownload": false,
+  "sourceGuildID": "0000000000000000",
+  "destGuildID": "0000000000000000",
+  "skipChannels": [],
+  "cooldown": 0,
+  "agreeUsers": []
+}

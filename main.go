@@ -2,7 +2,6 @@ package main
 
 import (
 	"encoding/json"
-	"flag"
 	"fmt"
 	"io"
 	"log"
@@ -19,23 +18,36 @@ import (
 	"github.com/bwmarrin/discordgo"
 )
 
+type Config struct {
+	Token         string   `json:"token"`
+	IsDownload    bool     `json:"isDownload"`
+	SourceGuildID string   `json:"sourceGuildID"`
+	DestGuildID   string   `json:"destGuildID"`
+	SkipChannels  []string `json:"skipChannels"`
+	Cooldown      int      `json:"cooldown"`
+	AgreeUsers    []string `json:"agreeUsers"`
+}
+
 var (
 	//変数定義
-	token               = flag.String("token", "", "bot token")
-	targetGuildID       = flag.String("guild", "", "guildID")
-	saved         int64 = 0
-	saveDir       string
-	startTime     time.Time
-	elapsedTime   time.Time
+	config      Config
+	saved       int64 = 0
+	saveDir     string
+	startTime   time.Time
+	elapsedTime time.Time
 )
 
-func main() {
-	//flag入手
-	flag.Parse()
-	fmt.Println("botToken        :", *token)
+func init() {
+	f, _ := os.ReadFile("config.json")
+	json.Unmarshal(f, &config)
+	fmt.Println("botToken        :", config.Token)
+	fmt.Println("sourceGuild     :", config.SourceGuildID)
+	fmt.Println("isDownload      :", config.IsDownload)
+}
 
+func main() {
 	//bot起動準備
-	discord, _ := discordbot.Init(*token)
+	discord, _ := discordbot.Init(config.Token)
 
 	//eventトリガー設定
 	discord.AddHandler(onReady)
@@ -52,42 +64,52 @@ func onReady(discord *discordgo.Session, r *discordgo.Ready) {
 	//起動メッセージ
 	fmt.Println("Bot is OnReady now!")
 
-	// Create Save Dir
-	_, file, _, _ := runtime.Caller(0)
-	saveDir = filepath.Join(filepath.Dir(file), "download", *targetGuildID)
-	log.Println("[Info] Save Directory Is", saveDir)
-	os.MkdirAll(saveDir, 0766)
-	err := os.Chdir(saveDir)
-	if err != nil {
-		panic(err)
+	if config.IsDownload {
+		// Create Save Dir
+		_, file, _, _ := runtime.Caller(0)
+		saveDir = filepath.Join(filepath.Dir(file), "download", config.SourceGuildID)
+		log.Println("[Info] Save Directory Is", saveDir)
+		os.MkdirAll(saveDir, 0766)
+		err := os.Chdir(saveDir)
+		if err != nil {
+			panic(err)
+		}
 	}
 
 	// Guild Data
-	log.Println("[Info] Get&Save Guild Settings:", *targetGuildID)
+	log.Println("[Info] Get&Save Guild Settings:", config.SourceGuildID)
 	startTime = time.Now()
 	elapsedTime = time.Now()
 
-	guild, err := discord.Guild(*targetGuildID)
+	guild, err := discord.Guild(config.SourceGuildID)
 	if err != nil {
 		panic(err)
 	}
-	err = SaveJsonFile("guild", guild)
-	if err != nil {
-		panic("")
+	if config.IsDownload {
+		err = SaveJsonFile("guild", guild)
+		if err != nil {
+			panic("")
+		}
+	} else {
+
 	}
 	log.Println("[Info] Saved Guild Settings", LogData())
 
 	// Guild Channels Data
-	log.Println("[Info] Get&Save Guild Channels:", *targetGuildID)
+	log.Println("[Info] Get&Save Guild Channels:", config.SourceGuildID)
 	elapsedTime = time.Now()
 
-	channels, err := discord.GuildChannels(*targetGuildID)
+	channels, err := discord.GuildChannels(config.SourceGuildID)
 	if err != nil {
 		panic(err)
 	}
-	err = SaveJsonFile("channels", channels)
-	if err != nil {
-		panic("")
+	if config.IsDownload {
+		err = SaveJsonFile("channels", channels)
+		if err != nil {
+			panic("")
+		}
+	} else {
+
 	}
 	log.Println("[Info] Saved Guild Channels", LogData())
 
@@ -110,33 +132,37 @@ func onReady(discord *discordgo.Session, r *discordgo.Ready) {
 			}
 
 			for _, m := range messages {
-				for _, attachment := range m.Attachments {
-					res, err := http.Get(attachment.URL)
-					if err != nil {
-						log.Printf("[Error] Failed Get Attachment File %s=>%s, Error:%s", m.ID, attachment.Filename, err.Error())
-						continue
-					}
-					defer res.Body.Close()
+				if config.IsDownload {
+					for _, attachment := range m.Attachments {
+						res, err := http.Get(attachment.URL)
+						if err != nil {
+							log.Printf("[Error] Failed Get Attachment File %s=>%s, Error:%s", m.ID, attachment.Filename, err.Error())
+							continue
+						}
+						defer res.Body.Close()
 
-					u, _ := url.Parse(attachment.URL)
-					err = os.MkdirAll(filepath.Join(saveDir, filepath.Dir(u.Path)), 0766)
-					if err != nil {
-						log.Printf("[Error] Failed Create Attachment Directory %s=>%s, Error:%s", m.ID, attachment.Filename, err.Error())
-						continue
-					}
-					f, err := os.Create(filepath.Join(saveDir, u.Path))
-					if err != nil {
-						log.Printf("[Error] Failed Create Attachment File %s=>%s, Error:%s", m.ID, attachment.Filename, err.Error())
-						continue
-					}
-					defer f.Close()
+						u, _ := url.Parse(attachment.URL)
+						err = os.MkdirAll(filepath.Join(saveDir, filepath.Dir(u.Path)), 0766)
+						if err != nil {
+							log.Printf("[Error] Failed Create Attachment Directory %s=>%s, Error:%s", m.ID, attachment.Filename, err.Error())
+							continue
+						}
+						f, err := os.Create(filepath.Join(saveDir, u.Path))
+						if err != nil {
+							log.Printf("[Error] Failed Create Attachment File %s=>%s, Error:%s", m.ID, attachment.Filename, err.Error())
+							continue
+						}
+						defer f.Close()
 
-					n, err := io.Copy(f, res.Body)
-					if err != nil {
-						log.Printf("[Error] Failed Write Attachment File %s=>%s, Error:%s", m.ID, attachment.Filename, err.Error())
-						continue
+						n, err := io.Copy(f, res.Body)
+						if err != nil {
+							log.Printf("[Error] Failed Write Attachment File %s=>%s, Error:%s", m.ID, attachment.Filename, err.Error())
+							continue
+						}
+						saved += n
 					}
-					saved += n
+				} else {
+
 				}
 			}
 			last := messages[len(messages)-1]
@@ -153,12 +179,15 @@ func onReady(discord *discordgo.Session, r *discordgo.Ready) {
 			}
 		}
 		log.Printf("[Info] Save Channel Messages Count:%d\n", len(messageData))
-		err = SaveJsonFile(channel.ID, messageData)
-		if err != nil {
-			panic("")
+		if config.IsDownload {
+			err = SaveJsonFile(channel.ID, messageData)
+			if err != nil {
+				panic("")
+			}
+		} else {
+
 		}
 		log.Printf("[Info] Saved Channel Messages  Channel:%d/%d, %s\n", n, len(channels), LogData())
-
 	}
 
 	log.Println("Finish!", LogData())
