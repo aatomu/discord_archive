@@ -65,15 +65,24 @@ func onReady(discord *discordgo.Session, r *discordgo.Ready) {
 	fmt.Println("Bot is OnReady now!")
 
 	if config.IsDownload {
-		// Create Save Dir
-		_, file, _, _ := runtime.Caller(0)
-		saveDir = filepath.Join(filepath.Dir(file), "download", config.SourceGuildID)
-		log.Println("[Info] Save Directory Is", saveDir)
-		os.MkdirAll(saveDir, 0766)
-		err := os.Chdir(saveDir)
-		if err != nil {
-			panic(err)
-		}
+		DownloadGuild(discord)
+	} else {
+		CloneGuild(discord)
+	}
+
+	log.Println("Finish!", LogData())
+	os.Exit(0)
+}
+
+func DownloadGuild(discord *discordgo.Session) {
+	// Create Save Dir
+	_, file, _, _ := runtime.Caller(0)
+	saveDir = filepath.Join(filepath.Dir(file), "download", config.SourceGuildID)
+	log.Println("[Info] Save Directory Is", saveDir)
+	os.MkdirAll(saveDir, 0766)
+	err := os.Chdir(saveDir)
+	if err != nil {
+		panic(err)
 	}
 
 	// Guild Data
@@ -85,13 +94,9 @@ func onReady(discord *discordgo.Session, r *discordgo.Ready) {
 	if err != nil {
 		panic(err)
 	}
-	if config.IsDownload {
-		err = SaveJsonFile("guild", guild)
-		if err != nil {
-			panic("")
-		}
-	} else {
-
+	err = SaveJsonFile("guild", guild)
+	if err != nil {
+		panic("")
 	}
 	log.Println("[Info] Saved Guild Settings", LogData())
 
@@ -103,13 +108,9 @@ func onReady(discord *discordgo.Session, r *discordgo.Ready) {
 	if err != nil {
 		panic(err)
 	}
-	if config.IsDownload {
-		err = SaveJsonFile("channels", channels)
-		if err != nil {
-			panic("")
-		}
-	} else {
-
+	err = SaveJsonFile("channels", channels)
+	if err != nil {
+		panic("")
 	}
 	log.Println("[Info] Saved Guild Channels", LogData())
 
@@ -132,37 +133,33 @@ func onReady(discord *discordgo.Session, r *discordgo.Ready) {
 			}
 
 			for _, m := range messages {
-				if config.IsDownload {
-					for _, attachment := range m.Attachments {
-						res, err := http.Get(attachment.URL)
-						if err != nil {
-							log.Printf("[Error] Failed Get Attachment File %s=>%s, Error:%s", m.ID, attachment.Filename, err.Error())
-							continue
-						}
-						defer res.Body.Close()
-
-						u, _ := url.Parse(attachment.URL)
-						err = os.MkdirAll(filepath.Join(saveDir, filepath.Dir(u.Path)), 0766)
-						if err != nil {
-							log.Printf("[Error] Failed Create Attachment Directory %s=>%s, Error:%s", m.ID, attachment.Filename, err.Error())
-							continue
-						}
-						f, err := os.Create(filepath.Join(saveDir, u.Path))
-						if err != nil {
-							log.Printf("[Error] Failed Create Attachment File %s=>%s, Error:%s", m.ID, attachment.Filename, err.Error())
-							continue
-						}
-						defer f.Close()
-
-						n, err := io.Copy(f, res.Body)
-						if err != nil {
-							log.Printf("[Error] Failed Write Attachment File %s=>%s, Error:%s", m.ID, attachment.Filename, err.Error())
-							continue
-						}
-						saved += n
+				for _, attachment := range m.Attachments {
+					res, err := http.Get(attachment.URL)
+					if err != nil {
+						log.Printf("[Error] Failed Get Attachment File %s=>%s, Error:%s", m.ID, attachment.Filename, err.Error())
+						continue
 					}
-				} else {
+					defer res.Body.Close()
 
+					u, _ := url.Parse(attachment.URL)
+					err = os.MkdirAll(filepath.Join(saveDir, filepath.Dir(u.Path)), 0766)
+					if err != nil {
+						log.Printf("[Error] Failed Create Attachment Directory %s=>%s, Error:%s", m.ID, attachment.Filename, err.Error())
+						continue
+					}
+					f, err := os.Create(filepath.Join(saveDir, u.Path))
+					if err != nil {
+						log.Printf("[Error] Failed Create Attachment File %s=>%s, Error:%s", m.ID, attachment.Filename, err.Error())
+						continue
+					}
+					defer f.Close()
+
+					n, err := io.Copy(f, res.Body)
+					if err != nil {
+						log.Printf("[Error] Failed Write Attachment File %s=>%s, Error:%s", m.ID, attachment.Filename, err.Error())
+						continue
+					}
+					saved += n
 				}
 			}
 			last := messages[len(messages)-1]
@@ -173,25 +170,96 @@ func onReady(discord *discordgo.Session, r *discordgo.Ready) {
 				break
 			}
 			beforeMessageID = last.ID
+
 			messageData = append(messageData, messages...)
 			if len(messageData)%2000 == 0 {
 				log.Printf("[Info] Loaded Messages %d ~%s %s", len(messageData), last.Timestamp.Format(time.RFC3339), LogData())
 			}
 		}
 		log.Printf("[Info] Save Channel Messages Count:%d\n", len(messageData))
-		if config.IsDownload {
-			err = SaveJsonFile(channel.ID, messageData)
-			if err != nil {
-				panic("")
-			}
-		} else {
-
+		err = SaveJsonFile(channel.ID, messageData)
+		if err != nil {
+			panic(err)
 		}
 		log.Printf("[Info] Saved Channel Messages  Channel:%d/%d, %s\n", n, len(channels), LogData())
 	}
+}
 
-	log.Println("Finish!", LogData())
-	os.Exit(0)
+func CloneGuild(discord *discordgo.Session) {
+	// Move Save Dir
+	_, file, _, _ := runtime.Caller(0)
+	saveDir = filepath.Join(filepath.Dir(file), "download", config.SourceGuildID)
+	err := os.Chdir(saveDir)
+	if err != nil {
+		panic(err)
+	}
+
+	// Guild Setting
+	log.Println("[Info] Read&Clone Guild Settings:", config.SourceGuildID)
+	startTime = time.Now()
+	elapsedTime = time.Now()
+
+	b, err := os.ReadFile("guild.json")
+	if err != nil {
+		panic(err)
+	}
+	var GuildSetting discordgo.Guild
+	json.Unmarshal(b, &GuildSetting)
+	_, err = discord.GuildEdit(config.DestGuildID, &discordgo.GuildParams{
+		Name:              GuildSetting.Name,
+		Region:            GuildSetting.Region,
+		VerificationLevel: &GuildSetting.VerificationLevel,
+		// DefaultMessageNotifications:, 後回し
+		ExplicitContentFilter: int(GuildSetting.ExplicitContentFilter),
+		// AfkChannelID:, 後回し
+		AfkTimeout:      GuildSetting.AfkTimeout,
+		Icon:            GuildSetting.Icon,
+		OwnerID:         GuildSetting.OwnerID,
+		Splash:          GuildSetting.Splash,
+		DiscoverySplash: GuildSetting.DiscoverySplash,
+		Banner:          GuildSetting.Banner,
+		//SystemChannelID:, 後回し
+		SystemChannelFlags: GuildSetting.SystemChannelFlags,
+		//RulesChannelID:, 後回し
+		//PublicUpdatesChannelID:, 後回し
+		PreferredLocale: discordgo.Locale(GuildSetting.PreferredLocale),
+		//Features:        GuildSetting.Features, なんかできん
+		Description: GuildSetting.Description,
+		//PremiumProgressBarEnabled:, 項目不明
+	})
+	if err != nil {
+		panic(err)
+	}
+	log.Println("[Info] Cloned Guild Settings", LogData())
+
+	// Create Roles
+	log.Println("[Info] Read&Clone Role Settings:", len(GuildSetting.Roles))
+	elapsedTime = time.Now()
+
+	Roles := map[string]string{}
+	RolesSorted := []*discordgo.Role{}
+	for _, role := range GuildSetting.Roles {
+		newRole, err := discord.GuildRoleCreate(config.DestGuildID, &discordgo.RoleParams{
+			Name:        role.Name,
+			Color:       &role.Color,
+			Hoist:       &role.Hoist,
+			Permissions: &role.Permissions,
+			Mentionable: &role.Mentionable,
+		})
+		if err != nil {
+			panic(err)
+		}
+		newRole.Position = role.Position
+		Roles[role.ID] = newRole.ID
+		RolesSorted = append(RolesSorted, newRole)
+		log.Println("[Info] Created Role:", role.Name)
+	}
+	discord.GuildRoleReorder(config.DestGuildID, RolesSorted)
+	log.Println("[Info] Role Reordered")
+	log.Println("[Info] Cloned Role Settings", LogData())
+
+	// Create Channels
+
 }
 
 func SaveJsonFile(name string, data interface{}) error {
