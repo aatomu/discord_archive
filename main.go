@@ -11,6 +11,7 @@ import (
 	"os"
 	"path/filepath"
 	"runtime"
+	"sort"
 	"time"
 
 	"github.com/atomu21263/atomicgo/discordbot"
@@ -186,6 +187,20 @@ func DownloadGuild(discord *discordgo.Session) {
 }
 
 func CloneGuild(discord *discordgo.Session) {
+	// Debug
+	log.Println("Delete Role")
+	roles, _ := discord.GuildRoles(config.DestGuildID)
+	for _, role := range roles {
+		log.Println("Delete:", role.Name)
+		discord.GuildRoleDelete(config.DestGuildID, role.ID)
+	}
+	log.Println("Delete Channels")
+	channels, _ := discord.GuildChannels(config.DestGuildID)
+	for _, channel := range channels {
+		log.Println("Delete:", channel.Name)
+		discord.ChannelDelete(channel.ID)
+	}
+
 	// Move Save Dir
 	_, file, _, _ := runtime.Caller(0)
 	saveDir = filepath.Join(filepath.Dir(file), "download", config.SourceGuildID)
@@ -259,6 +274,67 @@ func CloneGuild(discord *discordgo.Session) {
 	log.Println("[Info] Cloned Role Settings", LogData())
 
 	// Create Channels
+	log.Println("[Info] Read&Clone Channel")
+	elapsedTime = time.Now()
+
+	b, err = os.ReadFile("channels.json")
+	if err != nil {
+		panic(err)
+	}
+	var ChannelSettings []discordgo.Channel
+	json.Unmarshal(b, &ChannelSettings)
+	Channels := map[string]string{}
+	for _, channel := range ChannelSettings { // ロールIDの書き換え
+		for _, permissions := range channel.PermissionOverwrites {
+			permissions.ID = Roles[permissions.ID]
+		}
+	}
+	sort.Slice(ChannelSettings, func(i, j int) bool { // 並び替え
+		return ChannelSettings[i].Position < ChannelSettings[j].Position
+	})
+	for _, channel := range ChannelSettings { // カテゴリー
+		if channel.Type == discordgo.ChannelTypeGuildCategory {
+			newChannel, err := discord.GuildChannelCreateComplex(config.DestGuildID, discordgo.GuildChannelCreateData{
+				Name:                 channel.Name,
+				Type:                 channel.Type,
+				Topic:                channel.Topic,
+				Bitrate:              channel.Bitrate,
+				UserLimit:            channel.UserLimit,
+				RateLimitPerUser:     channel.RateLimitPerUser,
+				Position:             channel.Position,
+				PermissionOverwrites: channel.PermissionOverwrites,
+				ParentID:             "",
+				NSFW:                 channel.NSFW,
+			})
+			if err != nil {
+				panic(err)
+			}
+			Channels[channel.ID] = newChannel.ID
+			log.Println("[Info] Created Category:", channel.Name)
+		}
+	}
+	for _, channel := range ChannelSettings { // チャンネル
+		if channel.Type != discordgo.ChannelTypeGuildCategory {
+			newChannel, err := discord.GuildChannelCreateComplex(config.DestGuildID, discordgo.GuildChannelCreateData{
+				Name:                 channel.Name,
+				Type:                 channel.Type,
+				Topic:                channel.Topic,
+				Bitrate:              channel.Bitrate,
+				UserLimit:            channel.UserLimit,
+				RateLimitPerUser:     channel.RateLimitPerUser,
+				Position:             channel.Position,
+				PermissionOverwrites: channel.PermissionOverwrites,
+				ParentID:             Channels[channel.ParentID],
+				NSFW:                 channel.NSFW,
+			})
+			if err != nil {
+				panic(err)
+			}
+			Channels[channel.ID] = newChannel.ID
+			log.Println("[Info] Created Channel:", channel.Name)
+		}
+	}
+	log.Println("[Info] Cloned Role Settings", LogData())
 
 }
 
