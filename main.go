@@ -10,8 +10,10 @@ import (
 	"net/url"
 	"os"
 	"path/filepath"
+	"regexp"
 	"runtime"
 	"sort"
+	"strings"
 	"time"
 
 	"github.com/atomu21263/atomicgo/discordbot"
@@ -217,7 +219,12 @@ func CloneGuild(discord *discordgo.Session) {
 	}
 
 	// Archive
-	var archive Archive
+	archive := Archive{
+		GuildID:   map[string]string{},
+		RoleID:    map[string]string{},
+		ChannelID: map[string]string{},
+		MessageID: map[string]string{},
+	}
 	// Guild Setting
 	log.Println("[Info] Read&Clone Guild Settings:", config.SourceGuildID)
 	startTime = time.Now()
@@ -255,14 +262,13 @@ func CloneGuild(discord *discordgo.Session) {
 		panic(err)
 	}
 
-	archive.GuildID = map[string]string{config.SourceGuildID: config.DestGuildID}
+	archive.GuildID[config.SourceGuildID] = config.DestGuildID
 	log.Println("[Info] Cloned Guild Settings", LogData())
 
 	// Create Roles
 	log.Println("[Info] Read&Clone Role Settings:", len(GuildSetting.Roles))
 	elapsedTime = time.Now()
 
-	Roles := map[string]string{}
 	RolesSorted := []*discordgo.Role{}
 	for _, role := range GuildSetting.Roles {
 		newRole, err := discord.GuildRoleCreate(config.DestGuildID, &discordgo.RoleParams{
@@ -276,14 +282,12 @@ func CloneGuild(discord *discordgo.Session) {
 			panic(err)
 		}
 		newRole.Position = role.Position
-		Roles[role.ID] = newRole.ID
+		archive.RoleID[role.ID] = newRole.ID
 		RolesSorted = append(RolesSorted, newRole)
 		log.Println("[Info] Created Role:", role.Name)
 	}
 	discord.GuildRoleReorder(config.DestGuildID, RolesSorted)
 	log.Println("[Info] Role Reordered")
-
-	archive.RoleID = Roles
 	log.Println("[Info] Cloned Role Settings", LogData())
 
 	// Create Channels
@@ -296,10 +300,9 @@ func CloneGuild(discord *discordgo.Session) {
 	}
 	var ChannelSettings []discordgo.Channel
 	json.Unmarshal(b, &ChannelSettings)
-	Channels := map[string]string{}
 	for _, channel := range ChannelSettings { // ロールIDの書き換え
 		for _, permissions := range channel.PermissionOverwrites {
-			permissions.ID = Roles[permissions.ID]
+			permissions.ID = archive.RoleID[permissions.ID]
 		}
 	}
 	sort.Slice(ChannelSettings, func(i, j int) bool { // 並び替え
@@ -322,7 +325,7 @@ func CloneGuild(discord *discordgo.Session) {
 			if err != nil {
 				panic(err)
 			}
-			Channels[channel.ID] = newChannel.ID
+			archive.ChannelID[channel.ID] = newChannel.ID
 			log.Println("[Info] Created Category:", channel.Name)
 		}
 	}
@@ -337,20 +340,92 @@ func CloneGuild(discord *discordgo.Session) {
 				RateLimitPerUser:     channel.RateLimitPerUser,
 				Position:             channel.Position,
 				PermissionOverwrites: channel.PermissionOverwrites,
-				ParentID:             Channels[channel.ParentID],
+				ParentID:             archive.ChannelID[channel.ParentID],
 				NSFW:                 channel.NSFW,
 			})
 			if err != nil {
 				panic(err)
 			}
-			Channels[channel.ID] = newChannel.ID
+			archive.ChannelID[channel.ID] = newChannel.ID
 			log.Println("[Info] Created Channel:", channel.Name)
 		}
 	}
-
-	archive.ChannelID = Channels
 	log.Println("[Info] Cloned Role Settings", LogData())
 
+	// Create Channels
+	log.Println("[Info] Read&Clone Message")
+	elapsedTime = time.Now()
+
+	for _, channel := range ChannelSettings {
+		log.Println("[Info] Clone Message Channel:", channel.Name)
+		b, err = os.ReadFile(channel.ID + ".json")
+		if err != nil {
+			panic(err)
+		}
+		var messages []discordgo.Message
+		json.Unmarshal(b, &messages)
+
+		// タイムスタンプ順に
+		sort.Slice(messages, func(i, j int) bool {
+			return messages[i].Timestamp.Before(messages[j].Timestamp)
+		})
+
+		// メッセージ生成
+		for n, message := range messages {
+			if n%500 == 0 {
+				log.Println("[Info] Clone Messages", n+1)
+			}
+			// Attachment
+			var messageAttachments []*discordgo.File
+			for _, attachment := range message.Attachments {
+				u, _ := url.Parse(attachment.URL)
+				f, err := os.Open(u.Path)
+				if err != nil {
+					log.Println("[Error] Failed Read Message Attachment", channel.Name, err)
+					break
+				}
+				messageAttachments = append(messageAttachments, &discordgo.File{
+					Name:        attachment.Filename,
+					ContentType: attachment.ContentType,
+					Reader:      f,
+				})
+			}
+			// 各種変数変更
+			message.Content = regexp.MustCompile(`<#[0-9]+>`).ReplaceAllStringFunc(message.Content, func(s string) string {
+				s = strings.ReplaceAll(s, "<#", "")
+				s = strings.ReplaceAll(s, ">", "")
+				return fmt.Sprintf("<#%s>", archive.ChannelID[s])
+			})
+			message.Content = regexp.MustCompile(`<@&[0-9]+>`).ReplaceAllStringFunc(message.Content, func(s string) string {
+				s = strings.ReplaceAll(s, "<@&", "")
+				s = strings.ReplaceAll(s, ">", "")
+				return fmt.Sprintf("<@&%s>", archive.RoleID[s])
+			})
+			message.Content = regexp.MustCompile(`https://.+?\.discord\.com/channels/[0-9]+/[0-9]+/[0-9]+`).ReplaceAllStringFunc(message.Content, func(s string) string {
+				s, content, _ := strings.Cut(s, "/channels/")
+				str := strings.Split(content, "/")
+				return fmt.Sprintf("%s/channels/%s/%s", s, archive.GuildID[str[0]], archive.ChannelID[str[1]])
+			})
+			// 送信
+			newMessage, err := discord.ChannelMessageSendComplex(archive.ChannelID[channel.ID], &discordgo.MessageSend{
+				Content:    message.Content,
+				Embeds:     message.Embeds,
+				TTS:        message.TTS,
+				Components: message.Components,
+				Files:      messageAttachments,
+			})
+			if err != nil {
+				log.Println("[Error] Failed Clone Message", channel.Name, err)
+				break
+			}
+			archive.MessageID[message.ID] = newMessage.ID
+		}
+		log.Println("[Info] Clone Messages", len(messages))
+	}
+
+	log.Println("[Info] Cloned Channel Messages", LogData())
+
+	// 保存
 	SaveJsonFile("clone_config", archive)
 }
 
