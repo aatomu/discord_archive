@@ -29,6 +29,13 @@ type Config struct {
 	AgreeUsers    []string `json:"agreeUsers"`
 }
 
+type Archive struct {
+	GuildID   map[string]string `json:"guildID"`
+	RoleID    map[string]string `json:"roleID"`
+	ChannelID map[string]string `json:"channelID"`
+	MessageID map[string]string `json:"messageID"`
+}
+
 var (
 	//変数定義
 	config      Config
@@ -209,6 +216,8 @@ func CloneGuild(discord *discordgo.Session) {
 		panic(err)
 	}
 
+	// Archive
+	var archive Archive
 	// Guild Setting
 	log.Println("[Info] Read&Clone Guild Settings:", config.SourceGuildID)
 	startTime = time.Now()
@@ -245,6 +254,8 @@ func CloneGuild(discord *discordgo.Session) {
 	if err != nil {
 		panic(err)
 	}
+
+	archive.GuildID = map[string]string{config.SourceGuildID: config.DestGuildID}
 	log.Println("[Info] Cloned Guild Settings", LogData())
 
 	// Create Roles
@@ -271,6 +282,8 @@ func CloneGuild(discord *discordgo.Session) {
 	}
 	discord.GuildRoleReorder(config.DestGuildID, RolesSorted)
 	log.Println("[Info] Role Reordered")
+
+	archive.RoleID = Roles
 	log.Println("[Info] Cloned Role Settings", LogData())
 
 	// Create Channels
@@ -334,8 +347,11 @@ func CloneGuild(discord *discordgo.Session) {
 			log.Println("[Info] Created Channel:", channel.Name)
 		}
 	}
+
+	archive.ChannelID = Channels
 	log.Println("[Info] Cloned Role Settings", LogData())
 
+	SaveJsonFile("clone_config", archive)
 }
 
 func SaveJsonFile(name string, data interface{}) error {
