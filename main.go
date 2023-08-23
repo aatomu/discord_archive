@@ -449,6 +449,8 @@ func CloneGuild(discord *discordgo.Session) {
 				continue
 			}
 			archive.MessageID[message.ID] = newMessage.ID
+
+			time.Sleep(time.Second * time.Duration(config.Cooldown) / 10)
 		}
 		log.Println("[Info] Cloned Messages", len(messages))
 	}
