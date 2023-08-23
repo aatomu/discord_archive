@@ -52,9 +52,14 @@ var (
 func init() {
 	f, _ := os.ReadFile("config.json")
 	json.Unmarshal(f, &config)
-	fmt.Println("botToken        :", config.Token)
-	fmt.Println("sourceGuild     :", config.SourceGuildID)
-	fmt.Println("isDownload      :", config.IsDownload)
+	fmt.Println("Discord Bot Token                   :", config.Token)
+	fmt.Println("Is Download                         :", config.IsDownload)
+	fmt.Println("Is BackupFile Delete After Clone    :", config.DeleteAfterClone)
+	fmt.Println("Source GuildID                      :", config.SourceGuildID)
+	fmt.Println("Dest GuildID                        :", config.DestGuildID)
+	fmt.Println("Skip Channels                       :", config.SkipChannels)
+	fmt.Println("Cooldown(second)                    :", config.Cooldown)
+	fmt.Println("Accept Users                        :", config.AcceptUsers)
 }
 
 func main() {
