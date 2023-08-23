@@ -80,8 +80,6 @@ func onReady(discord *discordgo.Session, r *discordgo.Ready) {
 	} else {
 		CloneGuild(discord)
 	}
-
-	log.Println("Finish!", LogData())
 	os.Exit(0)
 }
 
@@ -191,20 +189,6 @@ func DownloadGuild(discord *discordgo.Session) {
 }
 
 func CloneGuild(discord *discordgo.Session) {
-	// Debug
-	log.Println("Delete Role")
-	roles, _ := discord.GuildRoles(config.DestGuildID)
-	for _, role := range roles {
-		log.Println("Delete:", role.Name)
-		discord.GuildRoleDelete(config.DestGuildID, role.ID)
-	}
-	log.Println("Delete Channels")
-	channels, _ := discord.GuildChannels(config.DestGuildID)
-	for _, channel := range channels {
-		log.Println("Delete:", channel.Name)
-		discord.ChannelDelete(channel.ID)
-	}
-
 	// Move Save Dir
 	_, file, _, _ := runtime.Caller(0)
 	saveDir = filepath.Join(filepath.Dir(file), "download", config.SourceGuildID)
@@ -213,16 +197,26 @@ func CloneGuild(discord *discordgo.Session) {
 		panic(err)
 	}
 
+	// Initialize
+	log.Println("[Info] Delete To Initialize Role(s)")
+	Roles, _ := discord.GuildRoles(config.DestGuildID)
+	for n, role := range Roles {
+		log.Printf("Delete: %s %d/%d", role.Name, n+1, len(Roles))
+		discord.GuildRoleDelete(config.DestGuildID, role.ID)
+	}
+	log.Println("[Info] Delete To Initialize Channel(s)")
+	Channels, _ := discord.GuildChannels(config.DestGuildID)
+	for n, channel := range Channels {
+		log.Printf("Delete: %s %d/%d", channel.Name, n+1, len(Channels))
+		discord.ChannelDelete(channel.ID)
+	}
+
 	// Archive
 	archive := Archive{
 		GuildID:   map[string]string{},
 		RoleID:    map[string]string{},
 		ChannelID: map[string]string{},
 		MessageID: map[string]string{},
-	}
-	if _, err := os.Stat("clone_config.json"); err == nil {
-		b, _ := os.ReadFile("clone_config.json")
-		json.Unmarshal(b, &archive)
 	}
 
 	// Guild Setting
@@ -352,7 +346,19 @@ func CloneGuild(discord *discordgo.Session) {
 	}
 	log.Println("[Info] Cloned Role Settings", LogData())
 
-	// Create Channels
+	// UpdateGuildConfig
+	_, err = discord.GuildEdit(config.DestGuildID, &discordgo.GuildParams{
+		DefaultMessageNotifications: Channels[GuildSettings.DefaultMessageNotifications],
+		AfkChannelID:                Channels[GuildSettings.AfkChannelID],
+		SystemChannelID:             Channels[GuildSettings.SystemChannelID],
+		RulesChannelID:              Channels[GuildSettings.RulesChannelID],
+		PublicUpdatesChannelID:      Channels[GuildSettings.PublicUpdatesChannelID],
+	})
+	if err != nil {
+		panic(err)
+	}
+
+	// Create Messages
 	log.Println("[Info] Read&Clone Message")
 	elapsedTime = time.Now()
 
@@ -448,24 +454,10 @@ func CloneGuild(discord *discordgo.Session) {
 	SaveJsonFile("clone_config", archive)
 }
 
-func SaveJsonFile(name string, data interface{}) error {
-	// Struct To JsonBytes
-	body, err := json.MarshalIndent(data, "", "  ")
-	if err != nil {
-		fmt.Println("[ERROR]:", err)
-		return err
-	}
-	// Write JsonBytes
-	err = os.WriteFile(name+".json", body, 0666)
-	if err != nil {
-		fmt.Println("[ERROR]:", err)
-		return err
-	}
-	saved += int64(len(body))
-	return nil
-}
+// File関連
+func MoveSaveDir() {
 
-// Save関連
+}
 func DownloadAttachment(m *discordgo.Message, attachment *discordgo.MessageAttachment) (ok bool, written int64) {
 	res, err := http.Get(attachment.URL)
 	if err != nil {
@@ -493,6 +485,23 @@ func DownloadAttachment(m *discordgo.Message, attachment *discordgo.MessageAttac
 		return
 	}
 	return true, n
+}
+
+func SaveJsonFile(name string, data interface{}) error {
+	// Struct To JsonBytes
+	body, err := json.MarshalIndent(data, "", "  ")
+	if err != nil {
+		fmt.Println("[ERROR]:", err)
+		return err
+	}
+	// Write JsonBytes
+	err = os.WriteFile(name+".json", body, 0666)
+	if err != nil {
+		fmt.Println("[ERROR]:", err)
+		return err
+	}
+	saved += int64(len(body))
+	return nil
 }
 
 // ログ関係
