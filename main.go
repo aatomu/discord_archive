@@ -402,7 +402,7 @@ func CloneGuild(discord *discordgo.Session) {
 			var messageAttachments []*discordgo.File
 			for _, attachment := range message.Attachments {
 				u, _ := url.Parse(attachment.URL)
-				f, err := os.Open(u.Path)
+				f, err := os.Open(filepath.Join(saveDir, u.Path))
 				if err != nil {
 					log.Println("[Error] Failed Read Message Attachment", channel.Name, err)
 					continue
