@@ -23,13 +23,14 @@ import (
 )
 
 type Config struct {
-	Token         string   `json:"token"`
-	IsDownload    bool     `json:"isDownload"`
-	SourceGuildID string   `json:"sourceGuildID"`
-	DestGuildID   string   `json:"destGuildID"`
-	SkipChannels  []string `json:"skipChannels"`
-	Cooldown      int      `json:"cooldown"`
-	AgreeUsers    []string `json:"agreeUsers"`
+	Token            string   `json:"token"`
+	IsDownload       bool     `json:"isDownload"`
+	DeleteAfterClone bool     `json:"deleteAfterClone"`
+	SourceGuildID    string   `json:"sourceGuildID"`
+	DestGuildID      string   `json:"destGuildID"`
+	SkipChannels     []string `json:"skipChannels"`
+	Cooldown         int      `json:"cooldown"`
+	AcceptUsers      []string `json:"acceptUsers"`
 }
 
 type Archive struct {
@@ -154,8 +155,8 @@ func DownloadGuild(discord *discordgo.Session) {
 
 			// メッセージ Attachment処理
 			for _, m := range messages {
-				// 不許可ユーザースキップ
-				if slices.Contains(config.AgreeUsers, m.Author.ID) {
+				// 不許可ユーザー&&!Bot スキップ
+				if !slices.Contains(config.AcceptUsers, m.Author.ID) && !m.Author.Bot {
 					continue
 				}
 				// Attachment DL
@@ -451,6 +452,13 @@ func CloneGuild(discord *discordgo.Session) {
 
 	// 保存
 	SaveJsonFile("clone_config", archive)
+	log.Printf("[Info] Cloned Guild All Setting,Channel,Message(s) %s\n", LogData())
+	if config.DeleteAfterClone {
+		err := os.Remove(".")
+		if err != nil {
+			log.Println("[Erorr] Failed Remove BackupFile", err)
+		}
+	}
 }
 
 // File関連

@@ -1,9 +1,18 @@
 {
-  "token": "",
-  "isDownload": false,
-  "sourceGuildID": "0000000000000000",
-  "destGuildID": "0000000000000000",
+  "comment01":"Discord Bot Token",
+  "token": "xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx",
+  "comment02":"if true: Download Guild, if false: Clone Guild",
+  "isDownload": true,
+  "comment03":"if true: Backup File Delete After Clone Program",
+  "deleteAfterClone":false,
+  "comment04":"Download Guild ID,Clone Source Guild ID",
+  "sourceGuildID": "0000000000",
+  "comment05":"Clone Dest Guild ID",
+  "destGuildID": "0000000000",
+  "comment06":"Download Skip Channel ID(s)",
   "skipChannels": [],
-  "cooldown": 0,
-  "agreeUsers": []
+  "comment07":"Download Cooldown Time(second)",
+  "cooldown": 10,
+  "comment08":"Download Accept User ID(s)",
+  "acceptUsers": []
 }
