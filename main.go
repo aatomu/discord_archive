@@ -199,15 +199,15 @@ func CloneGuild(discord *discordgo.Session) {
 
 	// Initialize
 	log.Println("[Info] Delete To Initialize Role(s)")
-	Roles, _ := discord.GuildRoles(config.DestGuildID)
-	for n, role := range Roles {
-		log.Printf("Delete: %s %d/%d", role.Name, n+1, len(Roles))
+	GuildRoles, _ := discord.GuildRoles(config.DestGuildID)
+	for n, role := range GuildRoles {
+		log.Printf("Delete: %s %d/%d", role.Name, n+1, len(GuildRoles))
 		discord.GuildRoleDelete(config.DestGuildID, role.ID)
 	}
 	log.Println("[Info] Delete To Initialize Channel(s)")
-	Channels, _ := discord.GuildChannels(config.DestGuildID)
-	for n, channel := range Channels {
-		log.Printf("Delete: %s %d/%d", channel.Name, n+1, len(Channels))
+	GuildChannels, _ := discord.GuildChannels(config.DestGuildID)
+	for n, channel := range GuildChannels {
+		log.Printf("Delete: %s %d/%d", channel.Name, n+1, len(GuildChannels))
 		discord.ChannelDelete(channel.ID)
 	}
 
@@ -231,11 +231,11 @@ func CloneGuild(discord *discordgo.Session) {
 	var GuildSetting discordgo.Guild
 	json.Unmarshal(b, &GuildSetting)
 	_, err = discord.GuildEdit(config.DestGuildID, &discordgo.GuildParams{
-		Name:              GuildSetting.Name,
-		Region:            GuildSetting.Region,
-		VerificationLevel: &GuildSetting.VerificationLevel,
-		// DefaultMessageNotifications:, 後回し
-		ExplicitContentFilter: int(GuildSetting.ExplicitContentFilter),
+		Name:                        GuildSetting.Name,
+		Region:                      GuildSetting.Region,
+		VerificationLevel:           &GuildSetting.VerificationLevel,
+		DefaultMessageNotifications: int(GuildSetting.DefaultMessageNotifications),
+		ExplicitContentFilter:       int(GuildSetting.ExplicitContentFilter),
 		// AfkChannelID:, 後回し
 		AfkTimeout:      GuildSetting.AfkTimeout,
 		Icon:            GuildSetting.Icon,
@@ -348,11 +348,10 @@ func CloneGuild(discord *discordgo.Session) {
 
 	// UpdateGuildConfig
 	_, err = discord.GuildEdit(config.DestGuildID, &discordgo.GuildParams{
-		DefaultMessageNotifications: Channels[GuildSettings.DefaultMessageNotifications],
-		AfkChannelID:                Channels[GuildSettings.AfkChannelID],
-		SystemChannelID:             Channels[GuildSettings.SystemChannelID],
-		RulesChannelID:              Channels[GuildSettings.RulesChannelID],
-		PublicUpdatesChannelID:      Channels[GuildSettings.PublicUpdatesChannelID],
+		AfkChannelID:           archive.ChannelID[GuildSetting.AfkChannelID],
+		SystemChannelID:        archive.ChannelID[GuildSetting.SystemChannelID],
+		RulesChannelID:         archive.ChannelID[GuildSetting.RulesChannelID],
+		PublicUpdatesChannelID: archive.ChannelID[GuildSetting.PublicUpdatesChannelID],
 	})
 	if err != nil {
 		panic(err)
@@ -455,9 +454,6 @@ func CloneGuild(discord *discordgo.Session) {
 }
 
 // File関連
-func MoveSaveDir() {
-
-}
 func DownloadAttachment(m *discordgo.Message, attachment *discordgo.MessageAttachment) (ok bool, written int64) {
 	res, err := http.Get(attachment.URL)
 	if err != nil {
