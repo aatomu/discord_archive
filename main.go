@@ -19,6 +19,7 @@ import (
 	"github.com/atomu21263/atomicgo/discordbot"
 	"github.com/atomu21263/atomicgo/utils"
 	"github.com/bwmarrin/discordgo"
+	"golang.org/x/exp/slices"
 )
 
 type Config struct {
@@ -143,33 +144,16 @@ func DownloadGuild(discord *discordgo.Session) {
 			}
 
 			for _, m := range messages {
+				// 不許可ユーザースキップ
+				if slices.Contains(config.AgreeUsers, m.Author.ID) {
+					continue
+				}
 				for _, attachment := range m.Attachments {
-					res, err := http.Get(attachment.URL)
-					if err != nil {
-						log.Printf("[Error] Failed Get Attachment File %s=>%s, Error:%s", m.ID, attachment.Filename, err.Error())
+					ok, written := DownloadAttachment(m, attachment)
+					if !ok {
 						continue
 					}
-					defer res.Body.Close()
-
-					u, _ := url.Parse(attachment.URL)
-					err = os.MkdirAll(filepath.Join(saveDir, filepath.Dir(u.Path)), 0766)
-					if err != nil {
-						log.Printf("[Error] Failed Create Attachment Directory %s=>%s, Error:%s", m.ID, attachment.Filename, err.Error())
-						continue
-					}
-					f, err := os.Create(filepath.Join(saveDir, u.Path))
-					if err != nil {
-						log.Printf("[Error] Failed Create Attachment File %s=>%s, Error:%s", m.ID, attachment.Filename, err.Error())
-						continue
-					}
-					defer f.Close()
-
-					n, err := io.Copy(f, res.Body)
-					if err != nil {
-						log.Printf("[Error] Failed Write Attachment File %s=>%s, Error:%s", m.ID, attachment.Filename, err.Error())
-						continue
-					}
-					saved += n
+					saved += written
 				}
 			}
 			last := messages[len(messages)-1]
@@ -472,6 +456,37 @@ func SaveJsonFile(name string, data interface{}) error {
 	return nil
 }
 
+// Save関連
+func DownloadAttachment(m *discordgo.Message, attachment *discordgo.MessageAttachment) (ok bool, written int64) {
+	res, err := http.Get(attachment.URL)
+	if err != nil {
+		log.Printf("[Error] Failed Get Attachment File %s=>%s, Error:%s", m.ID, attachment.Filename, err.Error())
+		return
+	}
+	defer res.Body.Close()
+
+	u, _ := url.Parse(attachment.URL)
+	err = os.MkdirAll(filepath.Join(saveDir, filepath.Dir(u.Path)), 0766)
+	if err != nil {
+		log.Printf("[Error] Failed Create Attachment Directory %s=>%s, Error:%s", m.ID, attachment.Filename, err.Error())
+		return
+	}
+	f, err := os.Create(filepath.Join(saveDir, u.Path))
+	if err != nil {
+		log.Printf("[Error] Failed Create Attachment File %s=>%s, Error:%s", m.ID, attachment.Filename, err.Error())
+		return
+	}
+	defer f.Close()
+
+	n, err := io.Copy(f, res.Body)
+	if err != nil {
+		log.Printf("[Error] Failed Write Attachment File %s=>%s, Error:%s", m.ID, attachment.Filename, err.Error())
+		return
+	}
+	return true, n
+}
+
+// ログ関係
 func LogData() string {
 	now := time.Now()
 	return fmt.Sprintf("Bytes:%s, Elapsed:%s, Total:%s\n", ByteSize(saved), now.Sub(elapsedTime), now.Sub(startTime))
