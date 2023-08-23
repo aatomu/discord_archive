@@ -164,6 +164,7 @@ func DownloadGuild(discord *discordgo.Session) {
 				if !slices.Contains(config.AcceptUsers, m.Author.ID) && !m.Author.Bot {
 					continue
 				}
+				messageData = append(messageData, m)
 				// Attachment DL
 				for _, attachment := range m.Attachments {
 					ok, written := DownloadAttachment(m, attachment)
@@ -174,7 +175,6 @@ func DownloadGuild(discord *discordgo.Session) {
 				}
 			}
 
-			messageData = append(messageData, messages...)
 			if len(messageData)%200 == 0 {
 				log.Printf("[Info] Loaded Messages %d ~%s %s", len(messageData), lastMessage.Timestamp.Format(time.RFC3339), LogData())
 			}
