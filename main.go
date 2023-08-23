@@ -130,11 +130,12 @@ func DownloadGuild(discord *discordgo.Session) {
 		log.Printf("[Info] Get&Save Channel Message: %s(%s)\n", channel.Name, channel.ID)
 		elapsedTime = time.Now()
 
-		beforeMessageID := ""
-		var beforeMessageTimestamp time.Time
+		var newestMessageTimeStamp time.Time
+		var prevMessageID string
 		messageData := []*discordgo.Message{}
 		for {
-			messages, err := discord.ChannelMessages(channel.ID, 100, beforeMessageID, "", "")
+			// 入手
+			messages, err := discord.ChannelMessages(channel.ID, 100, prevMessageID, "", "")
 			if err != nil {
 				log.Println("[Error] Failed Get Messages")
 				break
@@ -143,11 +144,23 @@ func DownloadGuild(discord *discordgo.Session) {
 				break
 			}
 
+			// 新しい奴か確認
+			lastMessage := messages[len(messages)-1]
+			if newestMessageTimeStamp.IsZero() {
+				newestMessageTimeStamp = lastMessage.Timestamp
+			}
+			if lastMessage.Timestamp.After(newestMessageTimeStamp) {
+				break
+			}
+			prevMessageID = lastMessage.ID
+
+			// メッセージ Attachment処理
 			for _, m := range messages {
 				// 不許可ユーザースキップ
 				if slices.Contains(config.AgreeUsers, m.Author.ID) {
 					continue
 				}
+				// Attachment DL
 				for _, attachment := range m.Attachments {
 					ok, written := DownloadAttachment(m, attachment)
 					if !ok {
@@ -156,29 +169,25 @@ func DownloadGuild(discord *discordgo.Session) {
 					saved += written
 				}
 			}
-			last := messages[len(messages)-1]
-			if beforeMessageTimestamp.IsZero() {
-				beforeMessageTimestamp = last.Timestamp
-			}
-			if last.Timestamp.After(beforeMessageTimestamp) {
-				break
-			}
-			beforeMessageID = last.ID
 
 			messageData = append(messageData, messages...)
 			if len(messageData)%2000 == 0 {
-				log.Printf("[Info] Loaded Messages %d ~%s %s", len(messageData), last.Timestamp.Format(time.RFC3339), LogData())
+				log.Printf("[Info] Loaded Messages %d ~%s %s", len(messageData), lastMessage.Timestamp.Format(time.RFC3339), LogData())
 			}
 
 			time.Sleep(time.Second * time.Duration(config.Cooldown))
 		}
-		log.Printf("[Info] Save Channel Messages Count:%d\n", len(messageData))
+
 		err = SaveJsonFile(channel.ID, messageData)
 		if err != nil {
 			panic(err)
 		}
-		log.Printf("[Info] Saved Channel Messages  Channel:%d/%d, %s\n", n, len(channels), LogData())
+
+		n++
+		log.Printf("[Info] Saved Channel Messages %d Channel:%d/%d, %s\n", len(messageData), n, len(channels), LogData())
 	}
+
+	log.Printf("[Info] Saved Guild All Setting,Channel,Message(s) %s\n", LogData())
 }
 
 func CloneGuild(discord *discordgo.Session) {
