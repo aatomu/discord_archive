@@ -225,6 +225,11 @@ func CloneGuild(discord *discordgo.Session) {
 		ChannelID: map[string]string{},
 		MessageID: map[string]string{},
 	}
+	if _, err := os.Stat("clone_config.json"); err == nil {
+		b, _ := os.ReadFile("clone_config.json")
+		json.Unmarshal(b, &archive)
+	}
+
 	// Guild Setting
 	log.Println("[Info] Read&Clone Guild Settings:", config.SourceGuildID)
 	startTime = time.Now()
@@ -357,14 +362,25 @@ func CloneGuild(discord *discordgo.Session) {
 	elapsedTime = time.Now()
 
 	for _, channel := range ChannelSettings {
-		log.Println("[Info] Clone Message Channel:", channel.Name)
 		b, err = os.ReadFile(channel.ID + ".json")
 		if err != nil {
 			panic(err)
 		}
 		var messages []discordgo.Message
 		json.Unmarshal(b, &messages)
+		if len(messages) < 1 {
+			continue
+		}
 
+		log.Println("[Info] Clone Message Channel:", channel.Name)
+		webhook, err := discord.WebhookCreate(archive.ChannelID[channel.ID], "message_cloner", "")
+		defer func(webhookID string) {
+			discord.WebhookDelete(webhookID)
+		}(webhook.ID)
+		if err != nil {
+			log.Println("[Error] Failed Create Webhook", channel.Name, err)
+			continue
+		}
 		// タイムスタンプ順に
 		sort.Slice(messages, func(i, j int) bool {
 			return messages[i].Timestamp.Before(messages[j].Timestamp)
@@ -372,8 +388,9 @@ func CloneGuild(discord *discordgo.Session) {
 
 		// メッセージ生成
 		for n, message := range messages {
+			n++
 			if n%500 == 0 {
-				log.Println("[Info] Clone Messages", n+1)
+				log.Println("[Info] Clone Messages", n)
 			}
 			// Attachment
 			var messageAttachments []*discordgo.File
@@ -382,7 +399,7 @@ func CloneGuild(discord *discordgo.Session) {
 				f, err := os.Open(u.Path)
 				if err != nil {
 					log.Println("[Error] Failed Read Message Attachment", channel.Name, err)
-					break
+					continue
 				}
 				messageAttachments = append(messageAttachments, &discordgo.File{
 					Name:        attachment.Filename,
@@ -407,20 +424,27 @@ func CloneGuild(discord *discordgo.Session) {
 				return fmt.Sprintf("%s/channels/%s/%s", s, archive.GuildID[str[0]], archive.ChannelID[str[1]])
 			})
 			// 送信
-			newMessage, err := discord.ChannelMessageSendComplex(archive.ChannelID[channel.ID], &discordgo.MessageSend{
+			newMessage, err := discord.WebhookExecute(webhook.ID, webhook.Token, true, &discordgo.WebhookParams{
 				Content:    message.Content,
-				Embeds:     message.Embeds,
+				Username:   message.Author.Username,
+				AvatarURL:  message.Author.AvatarURL("128"),
 				TTS:        message.TTS,
-				Components: message.Components,
 				Files:      messageAttachments,
+				Components: message.Components,
+				Embeds:     message.Embeds,
 			})
 			if err != nil {
 				log.Println("[Error] Failed Clone Message", channel.Name, err)
-				break
+				continue
+			}
+			if message.Pinned {
+				err := discord.ChannelMessagePin(archive.ChannelID[channel.ID], newMessage.ID)
+				log.Println("[Error] Failed Message Pin", channel.Name, err)
+				continue
 			}
 			archive.MessageID[message.ID] = newMessage.ID
 		}
-		log.Println("[Info] Clone Messages", len(messages))
+		log.Println("[Info] Cloned Messages", len(messages))
 	}
 
 	log.Println("[Info] Cloned Channel Messages", LogData())
