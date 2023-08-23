@@ -185,6 +185,8 @@ func DownloadGuild(discord *discordgo.Session) {
 			if len(messageData)%2000 == 0 {
 				log.Printf("[Info] Loaded Messages %d ~%s %s", len(messageData), last.Timestamp.Format(time.RFC3339), LogData())
 			}
+
+			time.Sleep(time.Second * time.Duration(config.Cooldown))
 		}
 		log.Printf("[Info] Save Channel Messages Count:%d\n", len(messageData))
 		err = SaveJsonFile(channel.ID, messageData)
