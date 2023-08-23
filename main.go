@@ -175,7 +175,7 @@ func DownloadGuild(discord *discordgo.Session) {
 			}
 
 			messageData = append(messageData, messages...)
-			if len(messageData)%2000 == 0 {
+			if len(messageData)%200 == 0 {
 				log.Printf("[Info] Loaded Messages %d ~%s %s", len(messageData), lastMessage.Timestamp.Format(time.RFC3339), LogData())
 			}
 
