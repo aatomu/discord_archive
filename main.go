@@ -16,8 +16,8 @@ import (
 	"strings"
 	"time"
 
-	"github.com/atomu21263/atomicgo/discordbot"
-	"github.com/atomu21263/atomicgo/utils"
+	"github.com/aatomu/atomicgo/discordbot"
+	"github.com/aatomu/atomicgo/utils"
 	"github.com/bwmarrin/discordgo"
 	"golang.org/x/exp/slices"
 )
